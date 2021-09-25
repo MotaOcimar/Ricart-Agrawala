@@ -13,8 +13,17 @@ func checkError(err error) {
 }
 
 func createLocalConnection(port string) (*net.UDPConn, error) {
-	// TODO
-	return nil, nil
+	myAddress, err := net.ResolveUDPAddr("udp", "localhost"+port)
+	if err != nil {
+		return nil, err
+	}
+
+	connection, err := net.ListenUDP("udp", myAddress)
+	if err != nil {
+		return nil, err
+	}
+
+	return connection, nil
 }
 
 func listenTerminal() {
@@ -23,7 +32,7 @@ func listenTerminal() {
 	}
 }
 
-func listenProcesses(connection *net.UDPConn) {
+func listenOtherProcesses(connection *net.UDPConn) {
 	for {
 		// TODO
 	}
@@ -39,5 +48,5 @@ func main() {
 	defer connection.Close()
 
 	go listenTerminal()
-	go listenProcesses(connection)
+	go listenOtherProcesses(connection)
 }
