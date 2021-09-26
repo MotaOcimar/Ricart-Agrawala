@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -15,10 +16,25 @@ type SafeClock struct {
 	value int
 }
 
+type state string
+
+const (
+	RELEASED state = "RELEASED"
+	WANTED   state = "WANTED"
+	HELD     state = "HELD"
+)
+
+type SafeState struct {
+	mutex sync.Mutex
+	value state
+}
+
 var (
-	myId  int
-	clock SafeClock
-	done  = make(chan bool)
+	myId      int
+	myClock   SafeClock
+	myState   SafeState = SafeState{value: RELEASED}
+	done                = make(chan bool)
+	printIsOk           = make(chan bool)
 )
 
 func checkError(err error) {
@@ -41,33 +57,70 @@ func createLocalConnection(port string) (*net.UDPConn, error) {
 	return connection, nil
 }
 
-func tryEnterCriticalSection() {
-	// TODO
-	fmt.Println("Tentando entrar na região crítica...")
+func requestCriticalSection() {
+	// TODO:
 }
 
-func incrementClock() {
-	clock.mutex.Lock()
-	clock.value++
-	clock.mutex.Unlock()
+func useCriticalSection() {
+	// TODO:
+}
+
+func releaseCriticalSection() {
+	// TODO:
+}
+
+func (stt *SafeState) changeTo(value state) {
+	stt.mutex.Lock()
+	stt.value = value
+	stt.mutex.Unlock()
+}
+
+func tryEnterCriticalSection() {
+	switch myState.value {
+	case HELD:
+		fmt.Println("x ignorado")
+		printIsOk <- true
+
+	case WANTED:
+		printIsOk <- true
+
+	case RELEASED:
+		myState.changeTo(WANTED)
+		printIsOk <- true
+
+		requestCriticalSection()
+		useCriticalSection()
+		releaseCriticalSection()
+
+	default:
+		panic(errors.New("Unexpected state"))
+	}
+}
+
+func (clk *SafeClock) increment() {
+	clk.mutex.Lock()
+	clk.value++
+	clk.mutex.Unlock()
 }
 
 func useInput(input string) {
 	if strings.ToLower(input) == "x" {
-		tryEnterCriticalSection()
+		go tryEnterCriticalSection()
+		<-printIsOk
 		return
 	}
 
 	num, err := strconv.Atoi(input)
 	if err == nil && num == myId {
-		incrementClock()
+		myClock.increment()
 	}
 }
 
 func listenTerminal() {
 	reader := bufio.NewReader(os.Stdin)
 	for {
-		fmt.Printf("Process %v, Clock %v> ", myId, clock.value)
+		fmt.Printf("Process %v, Clock %v, %v> ",
+			myId, myClock.value, myState.value)
 		input, err := reader.ReadString('\n')
 		checkError(err)
 		input = input[:len(input)-1]
@@ -78,7 +131,7 @@ func listenTerminal() {
 
 func listenOtherProcesses(connection *net.UDPConn) {
 	for {
-		// TODO
+		// TODO:
 	}
 }
 
