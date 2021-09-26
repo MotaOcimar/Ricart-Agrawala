@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-type SafeInt struct {
+type SafeInt struct { // TODO: será se n devo garantir que a leitura seja safe tbm? Para isso teria que dar lock em todo um escopo
 	mutex sync.Mutex
 	value int
 }
@@ -26,15 +26,15 @@ const (
 	HELD     state = "HELD"
 )
 
-type SafeState struct {
+type SafeState struct { // TODO: será se n devo garantir que a leitura seja safe tbm? Para isso teria que dar lock em todo um escopo
 	mutex sync.Mutex
 	value state
 }
 
 type processMessage struct {
-	Id    int
-	Clock int
-	Text  string
+	Id         int
+	ClockValue int
+	Text       string
 }
 
 var (
@@ -42,7 +42,7 @@ var (
 	myClock        SafeInt
 	myState        SafeState = SafeState{value: RELEASED}
 	myPort         string
-	myConnection   *net.UDPConn // TODO: myConnection deve ser safe? Ela é modificada?
+	myConnection   *net.UDPConn // TODO: Fazer uma conexão para responder cada cliente e uma só para escutar
 	myQueue        []string
 	numReplies     SafeInt
 	processesPorts []string
@@ -80,7 +80,7 @@ func sendMessageTo(text string, port string) {
 	receiverAddress, err := net.ResolveUDPAddr("udp", "localhost"+port)
 	checkError(err)
 
-	message := processMessage{Id: myId, Clock: myClock.value, Text: text}
+	message := processMessage{Id: myId, ClockValue: myClock.value, Text: text}
 	bytes, err := json.Marshal(message)
 	checkError(err)
 	_, err = myConnection.WriteToUDP(bytes, receiverAddress)
@@ -173,8 +173,8 @@ func useInput(input string) {
 }
 
 func updatePrompt() {
-	fmt.Printf("Process %v, Clock %v, %v, #replies: %v> ",
-		myId, myClock.value, myState.value, numReplies.value)
+	fmt.Printf("Process %v, Clock %v, %v> ",
+		myId, myClock.value, myState.value)
 }
 
 func listenTerminal() {
