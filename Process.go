@@ -1,10 +1,16 @@
 package main
 
 import (
+	"bufio"
+	"fmt"
 	"net"
 	"os"
 	"strconv"
+	"strings"
 )
+
+var myId int
+var done = make(chan bool)
 
 func checkError(err error) {
 	if err != nil {
@@ -26,10 +32,38 @@ func createLocalConnection(port string) (*net.UDPConn, error) {
 	return connection, nil
 }
 
-func listenTerminal() {
-	for {
-		// TODO
+func tryEnterCriticalSection() {
+	// TODO
+	fmt.Println("Tentando entrar na região crítica...")
+}
+
+func incrementClock() {
+	// TODO
+	fmt.Println("Incrementando clock")
+}
+
+func useInput(input string) {
+	if strings.ToLower(input) == "x" {
+		tryEnterCriticalSection()
+		return
 	}
+
+	num, err := strconv.Atoi(input)
+	if err == nil && num == myId {
+		incrementClock()
+	}
+}
+
+func listenTerminal() {
+	reader := bufio.NewReader(os.Stdin)
+	for {
+		fmt.Printf("Process %v> ", myId)
+		input, err := reader.ReadString('\n')
+		checkError(err)
+		input = input[:len(input)-1]
+		useInput(input)
+	}
+	done <- true
 }
 
 func listenOtherProcesses(connection *net.UDPConn) {
@@ -39,7 +73,8 @@ func listenOtherProcesses(connection *net.UDPConn) {
 }
 
 func main() {
-	myId, err := strconv.Atoi(os.Args[1])
+	var err error
+	myId, err = strconv.Atoi(os.Args[1])
 	checkError(err)
 	processesPorts := os.Args[2:]
 	myPort := processesPorts[myId-1]
@@ -49,4 +84,5 @@ func main() {
 
 	go listenTerminal()
 	go listenOtherProcesses(connection)
+	<-done
 }
