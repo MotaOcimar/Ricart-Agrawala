@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -11,7 +12,7 @@ import (
 	"sync"
 )
 
-type SafeClock struct {
+type SafeInt struct {
 	mutex sync.Mutex
 	value int
 }
@@ -29,15 +30,23 @@ type SafeState struct {
 	value state
 }
 
+type processMessage struct {
+	Id    int
+	Clock int
+	Text  string
+}
+
 var (
 	myId           int
-	myClock        SafeClock
+	myClock        SafeInt
 	myState        SafeState = SafeState{value: RELEASED}
 	myPort         string
 	myConnection   *net.UDPConn // TODO: myConnection deve ser safe? Ela é modificada?
+	numReplies     SafeInt
 	processesPorts []string
 	done           = make(chan bool)
 	printIsOk      = make(chan bool)
+	enoughReplies  = make(chan bool)
 )
 
 func checkError(err error) {
@@ -60,8 +69,25 @@ func createLocalConnection(port string) (*net.UDPConn, error) {
 	return connection, nil
 }
 
+func sendMessageTo(text string, port string) {
+	receiverAddress, err := net.ResolveUDPAddr("udp", "localhost"+port)
+	checkError(err)
+
+	message := processMessage{Id: myId, Clock: myClock.value, Text: text}
+	bytes, err := json.Marshal(message)
+	checkError(err)
+	_, err = myConnection.WriteToUDP(bytes, receiverAddress)
+	checkError(err)
+}
+
 func requestCriticalSection() {
-	// TODO:
+	numReplies.toZero()
+	for _, port := range processesPorts {
+		if port != myPort {
+			sendMessageTo("REQUEST", port)
+		}
+	}
+	<-enoughReplies
 }
 
 func useCriticalSection() {
@@ -100,10 +126,18 @@ func tryEnterCriticalSection() {
 	}
 }
 
-func (clk *SafeClock) increment() {
-	clk.mutex.Lock()
-	clk.value++
-	clk.mutex.Unlock()
+func (si *SafeInt) increment() (ret int) {
+	si.mutex.Lock()
+	si.value++
+	ret = si.value
+	si.mutex.Unlock()
+	return ret
+}
+
+func (si *SafeInt) toZero() {
+	si.mutex.Lock()
+	si.value = 0
+	si.mutex.Unlock()
 }
 
 func useInput(input string) {
@@ -134,7 +168,15 @@ func listenTerminal() {
 
 func listenOtherProcesses() {
 	for {
+		var receivedText string
 		// TODO:
+
+		if receivedText == "REPLY" {
+			numProcesses := len(processesPorts)
+			if numReplies.increment() == numProcesses-1 {
+				enoughReplies <- true
+			}
+		}
 	}
 }
 
