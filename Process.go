@@ -7,10 +7,19 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 )
 
-var myId int
-var done = make(chan bool)
+type SafeClock struct {
+	mutex sync.Mutex
+	value int
+}
+
+var (
+	myId  int
+	clock SafeClock
+	done  = make(chan bool)
+)
 
 func checkError(err error) {
 	if err != nil {
@@ -38,8 +47,9 @@ func tryEnterCriticalSection() {
 }
 
 func incrementClock() {
-	// TODO
-	fmt.Println("Incrementando clock")
+	clock.mutex.Lock()
+	clock.value++
+	clock.mutex.Unlock()
 }
 
 func useInput(input string) {
@@ -57,7 +67,7 @@ func useInput(input string) {
 func listenTerminal() {
 	reader := bufio.NewReader(os.Stdin)
 	for {
-		fmt.Printf("Process %v> ", myId)
+		fmt.Printf("Process %v, Clock %v> ", myId, clock.value)
 		input, err := reader.ReadString('\n')
 		checkError(err)
 		input = input[:len(input)-1]
