@@ -1,8 +1,16 @@
 package main
 
 import (
+	"encoding/json"
+	"fmt"
 	"net"
 )
+
+type processMessage struct {
+	Id    int
+	Clock int
+	Text  string
+}
 
 func checkError(err error) {
 	if err != nil {
@@ -25,8 +33,12 @@ func createLocalConnection(port string) (*net.UDPConn, error) {
 }
 
 func listenProcesses(connection *net.UDPConn) {
+	jsonDecoder := json.NewDecoder(connection)
 	for {
-		// TODO
+		var message processMessage
+		jsonDecoder.Decode(&message)
+		fmt.Printf("Process of id %v and clock %v says: \"%v\"\n",
+			message.Id, message.Clock, message.Text)
 	}
 }
 
