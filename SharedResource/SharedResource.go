@@ -43,7 +43,7 @@ func listenProcesses(connection *net.UDPConn) {
 }
 
 func main() {
-	myPort := ":10001"
+	const myPort = ":10001"
 	connection, err := createLocalConnection(myPort)
 	checkError(err)
 	defer connection.Close()

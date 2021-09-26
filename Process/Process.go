@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 type SafeInt struct {
@@ -42,11 +43,17 @@ var (
 	myState        SafeState = SafeState{value: RELEASED}
 	myPort         string
 	myConnection   *net.UDPConn // TODO: myConnection deve ser safe? Ela é modificada?
+	myQueue        []string
 	numReplies     SafeInt
 	processesPorts []string
 	done           = make(chan bool)
 	printIsOk      = make(chan bool)
 	enoughReplies  = make(chan bool)
+)
+
+const (
+	SharedResoursePort = ":10001"
+	sleepDuration      = 5 * time.Second
 )
 
 func checkError(err error) {
@@ -91,11 +98,23 @@ func requestCriticalSection() {
 }
 
 func useCriticalSection() {
-	// TODO:
+	myState.changeTo(HELD)
+	fmt.Println("\nEntrei na CS")
+	updatePrompt()
+
+	sendMessageTo("Oi CS ^-^", SharedResoursePort)
+	time.Sleep(sleepDuration)
 }
 
 func releaseCriticalSection() {
-	// TODO:
+	fmt.Println("\nSai da CS")
+	myState.changeTo(RELEASED)
+	updatePrompt()
+
+	for _, port := range myQueue {
+		sendMessageTo("REPLY", port)
+	}
+	myQueue = []string{}
 }
 
 func (stt *SafeState) changeTo(value state) {
@@ -153,11 +172,15 @@ func useInput(input string) {
 	}
 }
 
+func updatePrompt() {
+	fmt.Printf("Process %v, Clock %v, %v, #replies: %v> ",
+		myId, myClock.value, myState.value, numReplies.value)
+}
+
 func listenTerminal() {
 	reader := bufio.NewReader(os.Stdin)
 	for {
-		fmt.Printf("Process %v, Clock %v, %v> ",
-			myId, myClock.value, myState.value)
+		updatePrompt()
 		input, err := reader.ReadString('\n')
 		checkError(err)
 		input = input[:len(input)-1]
