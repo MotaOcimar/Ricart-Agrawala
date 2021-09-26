@@ -30,11 +30,14 @@ type SafeState struct {
 }
 
 var (
-	myId      int
-	myClock   SafeClock
-	myState   SafeState = SafeState{value: RELEASED}
-	done                = make(chan bool)
-	printIsOk           = make(chan bool)
+	myId           int
+	myClock        SafeClock
+	myState        SafeState = SafeState{value: RELEASED}
+	myPort         string
+	myConnection   *net.UDPConn // TODO: myConnection deve ser safe? Ela é modificada?
+	processesPorts []string
+	done           = make(chan bool)
+	printIsOk      = make(chan bool)
 )
 
 func checkError(err error) {
@@ -129,7 +132,7 @@ func listenTerminal() {
 	done <- true
 }
 
-func listenOtherProcesses(connection *net.UDPConn) {
+func listenOtherProcesses() {
 	for {
 		// TODO:
 	}
@@ -139,13 +142,13 @@ func main() {
 	var err error
 	myId, err = strconv.Atoi(os.Args[1])
 	checkError(err)
-	processesPorts := os.Args[2:]
-	myPort := processesPorts[myId-1]
-	connection, err := createLocalConnection(myPort)
+	processesPorts = os.Args[2:]
+	myPort = processesPorts[myId-1]
+	myConnection, err = createLocalConnection(myPort)
 	checkError(err)
-	defer connection.Close()
+	defer myConnection.Close()
 
 	go listenTerminal()
-	go listenOtherProcesses(connection)
+	go listenOtherProcesses()
 	<-done
 }
