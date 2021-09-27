@@ -88,7 +88,7 @@ func sendMessageTo(text string, port string) {
 }
 
 func requestCriticalSection() {
-	myClock.increment() // TODO: Update prompt sempre q incrementar o clock
+	myClock.increment()
 	printIsOk <- true
 
 	numReplies.toZero()
@@ -102,7 +102,7 @@ func requestCriticalSection() {
 
 func useCriticalSection() {
 	myState.changeTo(HELD)
-	fmt.Println("\nEntrei na CS")
+	fmt.Print("\nEntrei na CS")
 	updatePrompt()
 
 	sendMessageTo("Oi CS ^-^", SharedResoursePort)
@@ -110,7 +110,7 @@ func useCriticalSection() {
 }
 
 func releaseCriticalSection() {
-	fmt.Println("\nSai da CS")
+	fmt.Print("\nSai da CS")
 	myState.changeTo(RELEASED)
 	updatePrompt()
 
@@ -129,7 +129,7 @@ func (stt *SafeState) changeTo(value state) {
 func tryEnterCriticalSection() {
 	switch myState.value {
 	case HELD:
-		fmt.Println("x ignorado")
+		fmt.Print("x ignorado")
 		printIsOk <- true
 
 	case WANTED:
@@ -175,14 +175,15 @@ func useInput(input string) {
 }
 
 func updatePrompt() {
-	fmt.Printf("Process %v, Clock %v, %v> ",
+	fmt.Printf("\nProcess %v, Clock %v, %v> ",
 		myId, myClock.value, myState.value)
 }
 
 func listenTerminal() {
 	reader := bufio.NewReader(os.Stdin)
 	for {
-		updatePrompt()
+		fmt.Printf("Process %v, Clock %v, %v> ",
+			myId, myClock.value, myState.value)
 		input, err := reader.ReadString('\n')
 		checkError(err)
 		input = input[:len(input)-1]
@@ -192,6 +193,8 @@ func listenTerminal() {
 }
 
 func (clk *SafeInt) next(otherValue int) {
+	defer updatePrompt()
+
 	clk.mutex.Lock()
 	defer clk.mutex.Unlock()
 
