@@ -133,6 +133,8 @@ func sendMessageTo(text string, connection *net.UDPConn) {
 }
 
 func requestCriticalSection() {
+	// time.Sleep(sleepDuration) // Only in case you want simulate delayed message
+
 	numReplies.toZero()
 	for i, connection := range clientConn {
 		if i != myId-1 {
@@ -218,18 +220,17 @@ func listenTerminal() {
 func resolveMessage(message processMessage) {
 	switch message.Text {
 	case "REQUEST":
+		myClock.next(message.ClockValue)
 		senderConn := clientConn[message.Id-1]
 
-		if myState.value == RELEASED {
-			myClock.next(message.ClockValue)
-			sendMessageTo("REPLY", senderConn)
+		imPriority := clkValueAtReqst < message.ClockValue ||
+			(clkValueAtReqst == message.ClockValue && myId < message.Id)
 
-		} else if myState.value == HELD ||
-			(clkValueAtReqst < message.ClockValue ||
-				(clkValueAtReqst == message.ClockValue && myId < message.Id)) {
-
-			myClock.next(message.ClockValue)
+		if myState.value == HELD || (myState.value == WANTED && imPriority) {
 			myQueue = append(myQueue, senderConn)
+
+		} else {
+			sendMessageTo("REPLY", senderConn)
 		}
 
 	case "REPLY":
