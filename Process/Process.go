@@ -123,8 +123,8 @@ func newDialConn(port string) *net.UDPConn {
 	return connection
 }
 
-func sendMessageTo(text string, connection *net.UDPConn) {
-	message := processMessage{Id: myId, ClockValue: myClock.value, Text: text}
+func sendMessage(clockValue int, text string, connection *net.UDPConn) {
+	message := processMessage{Id: myId, ClockValue: clockValue, Text: text}
 	bytes, err := json.Marshal(message)
 	checkError(err)
 
@@ -138,7 +138,7 @@ func requestCriticalSection() {
 	numReplies.toZero()
 	for i, connection := range clientConn {
 		if i != myId-1 {
-			sendMessageTo("REQUEST", connection)
+			sendMessage(clkValueAtReqst, "REQUEST", connection)
 		}
 	}
 	<-enoughReplies
@@ -149,7 +149,7 @@ func useCriticalSection() {
 	fmt.Print("\nEntrei na CS")
 	updatePrompt()
 
-	sendMessageTo("Oi CS ^-^", sharedResourceConn)
+	sendMessage(myClock.value, "Oi CS ^-^", sharedResourceConn)
 	time.Sleep(sleepDuration)
 }
 
@@ -159,7 +159,7 @@ func releaseCriticalSection() {
 	updatePrompt()
 
 	for _, connection := range myQueue {
-		sendMessageTo("REPLY", connection)
+		sendMessage(myClock.value, "REPLY", connection)
 	}
 	myQueue = []*net.UDPConn{}
 }
@@ -230,7 +230,7 @@ func resolveMessage(message processMessage) {
 			myQueue = append(myQueue, senderConn)
 
 		} else {
-			sendMessageTo("REPLY", senderConn)
+			sendMessage(myClock.value, "REPLY", senderConn)
 		}
 
 	case "REPLY":
