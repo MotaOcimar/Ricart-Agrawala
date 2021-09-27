@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-// SafeInt type used both to store clock and the number of replies
+// SafeInt type used to store both clock and number of responses
 type SafeInt struct {
 	mutex sync.Mutex
 	value int
@@ -75,7 +75,7 @@ type processMessage struct {
 	Text       string
 }
 
-// Global variables
+// Variáveis Globais
 var (
 	myId               int
 	myClock            SafeInt
@@ -88,7 +88,7 @@ var (
 	clkValueAtReqst    int
 	numReplies         SafeInt
 	err                error
-	printIsOk          = make(chan bool)
+	continueToPrompt   = make(chan bool)
 	enoughReplies      = make(chan bool)
 )
 
@@ -168,15 +168,15 @@ func tryEnterCriticalSection() {
 	switch myState.value {
 	case HELD:
 		fmt.Print("x ignorado")
-		printIsOk <- true
+		continueToPrompt <- true
 
 	case WANTED:
-		printIsOk <- true
+		continueToPrompt <- true
 
 	case RELEASED:
 		myState.changeTo(WANTED)
 		clkValueAtReqst = myClock.increment()
-		printIsOk <- true
+		continueToPrompt <- true
 
 		requestCriticalSection()
 		useCriticalSection()
@@ -190,7 +190,7 @@ func tryEnterCriticalSection() {
 func useInput(input string) {
 	if strings.ToLower(input) == "x" {
 		go tryEnterCriticalSection()
-		<-printIsOk
+		<-continueToPrompt
 		return
 	}
 
@@ -253,24 +253,29 @@ func listenOtherProcesses() {
 }
 
 func main() {
+	// Descobre o Id do processo atual
 	myId, err = strconv.Atoi(os.Args[1])
 	checkError(err)
 
 	processesPorts := os.Args[2:]
-
 	myPort := processesPorts[myId-1]
+
+	// Cria a conexão para escutar outros processos
 	serverConn = newListenConn(myPort)
 	defer serverConn.Close()
 
+	// Cria uma conexão para enviar mensagens para cada outro processo
 	numProcesses = len(processesPorts)
 	for i, port := range processesPorts {
 		clientConn = append(clientConn, newDialConn(port))
 		defer clientConn[i].Close()
 	}
 
+	// Cria uma conexão para enviar mensagens para o SharedResource
 	sharedResourceConn = newDialConn(SharedResourcePort)
 	defer sharedResourceConn.Close()
 
+	// Inicia a escuta da conexão e do terminal
 	go listenOtherProcesses()
 	listenTerminal()
 }
