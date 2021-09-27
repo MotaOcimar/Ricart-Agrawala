@@ -133,9 +133,6 @@ func sendMessageTo(text string, connection *net.UDPConn) {
 }
 
 func requestCriticalSection() {
-	clkValueAtReqst = myClock.increment()
-	printIsOk <- true
-
 	numReplies.toZero()
 	for i, connection := range clientConn {
 		if i != myId-1 {
@@ -176,6 +173,8 @@ func tryEnterCriticalSection() {
 
 	case RELEASED:
 		myState.changeTo(WANTED)
+		clkValueAtReqst = myClock.increment()
+		printIsOk <- true
 
 		requestCriticalSection()
 		useCriticalSection()
