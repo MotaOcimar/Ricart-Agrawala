@@ -38,17 +38,18 @@ type processMessage struct {
 }
 
 var (
-	myId           int
-	myClock        SafeInt
-	myState        SafeState = SafeState{value: RELEASED}
-	myPort         string
-	myConnection   *net.UDPConn // TODO: Fazer uma conexão para responder cada cliente e uma só para escutar
-	myQueue        []string
-	numReplies     SafeInt
-	processesPorts []string
-	done           = make(chan bool)
-	printIsOk      = make(chan bool)
-	enoughReplies  = make(chan bool)
+	myId            int
+	myClock         SafeInt
+	myState         SafeState = SafeState{value: RELEASED}
+	myPort          string
+	myConnection    *net.UDPConn // TODO: Fazer uma conexão para responder cada cliente e uma só para escutar
+	myQueue         []string
+	clkValueAtReqst int
+	numReplies      SafeInt
+	processesPorts  []string
+	done            = make(chan bool)
+	printIsOk       = make(chan bool)
+	enoughReplies   = make(chan bool)
 )
 
 const (
@@ -88,7 +89,7 @@ func sendMessageTo(text string, port string) {
 }
 
 func requestCriticalSection() {
-	myClock.increment()
+	clkValueAtReqst = myClock.increment()
 	printIsOk <- true
 
 	numReplies.toZero()
@@ -215,9 +216,11 @@ func resolveMessage(message processMessage) {
 		if myState.value == RELEASED {
 			myClock.next(message.ClockValue)
 			sendMessageTo("REPLY", senderPort)
+
 		} else if myState.value == HELD ||
-			(myClock.value < message.ClockValue ||
-				(myClock.value == message.ClockValue && myId < message.Id)) {
+			(clkValueAtReqst < message.ClockValue ||
+				(clkValueAtReqst == message.ClockValue && myId < message.Id)) {
+
 			myClock.next(message.ClockValue)
 			myQueue = append(myQueue, senderPort)
 		}
