@@ -13,11 +13,42 @@ import (
 	"time"
 )
 
+// SafeInt type used both to store clock and the number of replies
 type SafeInt struct {
 	mutex sync.Mutex
 	value int
 }
 
+func (si *SafeInt) increment() (ret int) {
+	si.mutex.Lock()
+	si.value++
+	ret = si.value
+	si.mutex.Unlock()
+	return ret
+}
+
+func (si *SafeInt) toZero() {
+	si.mutex.Lock()
+	si.value = 0
+	si.mutex.Unlock()
+}
+
+func (clk *SafeInt) next(otherValue int) {
+	defer updatePrompt()
+
+	clk.mutex.Lock()
+	defer clk.mutex.Unlock()
+
+	if clk.value > otherValue {
+		clk.value++
+		return
+	}
+
+	clk.value = otherValue + 1
+	return
+}
+
+// Possbible processes states
 type state string
 
 const (
@@ -31,12 +62,20 @@ type SafeState struct {
 	value state
 }
 
+func (stt *SafeState) changeTo(value state) {
+	stt.mutex.Lock()
+	stt.value = value
+	stt.mutex.Unlock()
+}
+
+// processMessage model the messages exchanged between processes
 type processMessage struct {
 	Id         int
 	ClockValue int
 	Text       string
 }
 
+// Global variables
 var (
 	myId               int
 	myClock            SafeInt
@@ -126,12 +165,6 @@ func releaseCriticalSection() {
 	myQueue = []*net.UDPConn{}
 }
 
-func (stt *SafeState) changeTo(value state) {
-	stt.mutex.Lock()
-	stt.value = value
-	stt.mutex.Unlock()
-}
-
 func tryEnterCriticalSection() {
 	switch myState.value {
 	case HELD:
@@ -151,20 +184,6 @@ func tryEnterCriticalSection() {
 	default:
 		panic(errors.New("Unexpected state"))
 	}
-}
-
-func (si *SafeInt) increment() (ret int) {
-	si.mutex.Lock()
-	si.value++
-	ret = si.value
-	si.mutex.Unlock()
-	return ret
-}
-
-func (si *SafeInt) toZero() {
-	si.mutex.Lock()
-	si.value = 0
-	si.mutex.Unlock()
 }
 
 func useInput(input string) {
@@ -195,21 +214,6 @@ func listenTerminal() {
 		input = input[:len(input)-1]
 		useInput(input)
 	}
-}
-
-func (clk *SafeInt) next(otherValue int) {
-	defer updatePrompt()
-
-	clk.mutex.Lock()
-	defer clk.mutex.Unlock()
-
-	if clk.value > otherValue {
-		clk.value++
-		return
-	}
-
-	clk.value = otherValue + 1
-	return
 }
 
 func resolveMessage(message processMessage) {
