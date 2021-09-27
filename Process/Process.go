@@ -38,22 +38,23 @@ type processMessage struct {
 }
 
 var (
-	myId            int
-	myClock         SafeInt
-	myState         SafeState = SafeState{value: RELEASED}
-	myPort          string
-	myConnection    *net.UDPConn // TODO: Fazer uma conexão para responder cada cliente e uma só para escutar
-	myQueue         []string
-	clkValueAtReqst int
-	numReplies      SafeInt
-	processesPorts  []string
-	done            = make(chan bool)
-	printIsOk       = make(chan bool)
-	enoughReplies   = make(chan bool)
+	myId               int
+	myClock            SafeInt
+	myState            SafeState = SafeState{value: RELEASED}
+	myQueue            []*net.UDPConn
+	numProcesses       int
+	serverConn         *net.UDPConn
+	clientConn         []*net.UDPConn
+	sharedResourceConn *net.UDPConn
+	clkValueAtReqst    int
+	numReplies         SafeInt
+	err                error
+	printIsOk          = make(chan bool)
+	enoughReplies      = make(chan bool)
 )
 
 const (
-	SharedResoursePort = ":10001"
+	SharedResourcePort = ":10001"
 	sleepDuration      = 5 * time.Second
 )
 
@@ -63,28 +64,32 @@ func checkError(err error) {
 	}
 }
 
-func createLocalConnection(port string) (*net.UDPConn, error) {
-	myAddress, err := net.ResolveUDPAddr("udp", "localhost"+port)
-	if err != nil {
-		return nil, err
-	}
-
-	connection, err := net.ListenUDP("udp", myAddress)
-	if err != nil {
-		return nil, err
-	}
-
-	return connection, nil
-}
-
-func sendMessageTo(text string, port string) {
-	receiverAddress, err := net.ResolveUDPAddr("udp", "localhost"+port)
+func newListenConn(port string) *net.UDPConn {
+	localAddress, err := net.ResolveUDPAddr("udp", "localhost"+port)
 	checkError(err)
 
+	connection, err := net.ListenUDP("udp", localAddress)
+	checkError(err)
+
+	return connection
+}
+
+func newDialConn(port string) *net.UDPConn {
+	remoteAddress, err := net.ResolveUDPAddr("udp", "localhost"+port)
+	checkError(err)
+
+	connection, err := net.DialUDP("udp", nil, remoteAddress)
+	checkError(err)
+
+	return connection
+}
+
+func sendMessageTo(text string, connection *net.UDPConn) {
 	message := processMessage{Id: myId, ClockValue: myClock.value, Text: text}
 	bytes, err := json.Marshal(message)
 	checkError(err)
-	_, err = myConnection.WriteToUDP(bytes, receiverAddress)
+
+	_, err = connection.Write(bytes)
 	checkError(err)
 }
 
@@ -93,9 +98,9 @@ func requestCriticalSection() {
 	printIsOk <- true
 
 	numReplies.toZero()
-	for _, port := range processesPorts {
-		if port != myPort {
-			sendMessageTo("REQUEST", port)
+	for i, connection := range clientConn {
+		if i != myId-1 {
+			sendMessageTo("REQUEST", connection)
 		}
 	}
 	<-enoughReplies
@@ -106,7 +111,7 @@ func useCriticalSection() {
 	fmt.Print("\nEntrei na CS")
 	updatePrompt()
 
-	sendMessageTo("Oi CS ^-^", SharedResoursePort)
+	sendMessageTo("Oi CS ^-^", sharedResourceConn)
 	time.Sleep(sleepDuration)
 }
 
@@ -115,10 +120,10 @@ func releaseCriticalSection() {
 	myState.changeTo(RELEASED)
 	updatePrompt()
 
-	for _, port := range myQueue {
-		sendMessageTo("REPLY", port)
+	for _, connection := range myQueue {
+		sendMessageTo("REPLY", connection)
 	}
-	myQueue = []string{}
+	myQueue = []*net.UDPConn{}
 }
 
 func (stt *SafeState) changeTo(value state) {
@@ -190,7 +195,6 @@ func listenTerminal() {
 		input = input[:len(input)-1]
 		useInput(input)
 	}
-	done <- true
 }
 
 func (clk *SafeInt) next(otherValue int) {
@@ -211,24 +215,23 @@ func (clk *SafeInt) next(otherValue int) {
 func resolveMessage(message processMessage) {
 	switch message.Text {
 	case "REQUEST":
-		senderPort := processesPorts[message.Id-1]
+		senderConn := clientConn[message.Id-1]
 
 		if myState.value == RELEASED {
 			myClock.next(message.ClockValue)
-			sendMessageTo("REPLY", senderPort)
+			sendMessageTo("REPLY", senderConn)
 
 		} else if myState.value == HELD ||
 			(clkValueAtReqst < message.ClockValue ||
 				(clkValueAtReqst == message.ClockValue && myId < message.Id)) {
 
 			myClock.next(message.ClockValue)
-			myQueue = append(myQueue, senderPort)
+			myQueue = append(myQueue, senderConn)
 		}
 
 	case "REPLY":
 		myClock.next(message.ClockValue)
 
-		numProcesses := len(processesPorts)
 		if numReplies.increment() == numProcesses-1 {
 			enoughReplies <- true
 		}
@@ -236,7 +239,7 @@ func resolveMessage(message processMessage) {
 }
 
 func listenOtherProcesses() {
-	jsonDecoder := json.NewDecoder(myConnection)
+	jsonDecoder := json.NewDecoder(serverConn)
 
 	for {
 		var message processMessage
@@ -246,16 +249,24 @@ func listenOtherProcesses() {
 }
 
 func main() {
-	var err error
 	myId, err = strconv.Atoi(os.Args[1])
 	checkError(err)
-	processesPorts = os.Args[2:]
-	myPort = processesPorts[myId-1]
-	myConnection, err = createLocalConnection(myPort)
-	checkError(err)
-	defer myConnection.Close()
 
-	go listenTerminal()
+	processesPorts := os.Args[2:]
+
+	myPort := processesPorts[myId-1]
+	serverConn = newListenConn(myPort)
+	defer serverConn.Close()
+
+	numProcesses = len(processesPorts)
+	for i, port := range processesPorts {
+		clientConn = append(clientConn, newDialConn(port))
+		defer clientConn[i].Close()
+	}
+
+	sharedResourceConn = newDialConn(SharedResourcePort)
+	defer sharedResourceConn.Close()
+
 	go listenOtherProcesses()
-	<-done
+	listenTerminal()
 }
