@@ -7,9 +7,9 @@ import (
 )
 
 type processMessage struct {
-	Id    int
-	Clock int
-	Text  string
+	Id         int
+	ClockValue int
+	Text       string
 }
 
 func checkError(err error) {
@@ -38,7 +38,7 @@ func listenProcesses(connection *net.UDPConn) {
 		var message processMessage
 		jsonDecoder.Decode(&message)
 		fmt.Printf("Process of id %v and clock %v says: \"%v\"\n",
-			message.Id, message.Clock, message.Text)
+			message.Id, message.ClockValue, message.Text)
 	}
 }
 

@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-type SafeInt struct { // TODO: será se n devo garantir que a leitura seja safe tbm? Para isso teria que dar lock em todo um escopo
+type SafeInt struct {
 	mutex sync.Mutex
 	value int
 }
@@ -26,7 +26,7 @@ const (
 	HELD     state = "HELD"
 )
 
-type SafeState struct { // TODO: será se n devo garantir que a leitura seja safe tbm? Para isso teria que dar lock em todo um escopo
+type SafeState struct {
 	mutex sync.Mutex
 	value state
 }
@@ -88,6 +88,9 @@ func sendMessageTo(text string, port string) {
 }
 
 func requestCriticalSection() {
+	myClock.increment() // TODO: Update prompt sempre q incrementar o clock
+	printIsOk <- true
+
 	numReplies.toZero()
 	for _, port := range processesPorts {
 		if port != myPort {
@@ -134,7 +137,6 @@ func tryEnterCriticalSection() {
 
 	case RELEASED:
 		myState.changeTo(WANTED)
-		printIsOk <- true
 
 		requestCriticalSection()
 		useCriticalSection()
@@ -189,17 +191,51 @@ func listenTerminal() {
 	done <- true
 }
 
-func listenOtherProcesses() {
-	for {
-		var receivedText string
-		// TODO:
+func (clk *SafeInt) next(otherValue int) {
+	clk.mutex.Lock()
+	defer clk.mutex.Unlock()
 
-		if receivedText == "REPLY" {
-			numProcesses := len(processesPorts)
-			if numReplies.increment() == numProcesses-1 {
-				enoughReplies <- true
-			}
+	if clk.value > otherValue {
+		clk.value++
+		return
+	}
+
+	clk.value = otherValue + 1
+	return
+}
+
+func resolveMessage(message processMessage) {
+	switch message.Text {
+	case "REQUEST":
+		senderPort := processesPorts[message.Id-1]
+
+		if myState.value == RELEASED {
+			myClock.next(message.ClockValue)
+			sendMessageTo("REPLY", senderPort)
+		} else if myState.value == HELD ||
+			(myClock.value < message.ClockValue ||
+				(myClock.value == message.ClockValue && myId < message.Id)) {
+			myClock.next(message.ClockValue)
+			myQueue = append(myQueue, senderPort)
 		}
+
+	case "REPLY":
+		myClock.next(message.ClockValue)
+
+		numProcesses := len(processesPorts)
+		if numReplies.increment() == numProcesses-1 {
+			enoughReplies <- true
+		}
+	}
+}
+
+func listenOtherProcesses() {
+	jsonDecoder := json.NewDecoder(myConnection)
+
+	for {
+		var message processMessage
+		jsonDecoder.Decode(&message)
+		resolveMessage(message)
 	}
 }
 
